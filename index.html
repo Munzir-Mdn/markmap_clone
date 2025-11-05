@@ -3,68 +3,43 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Markdown → Mindmap (Markmap‑style)</title>
+  <title>Markdown → Mindmap (Markmap‑style with Offline Fallback)</title>
   <link rel="icon" href="data:," />
-  <!-- Markmap core (via CDN) -->
-  <script src="https://unpkg.com/markmap-lib@0.16.2/dist/browser/index.min.js"></script>
-  <script src="https://unpkg.com/markmap-view@0.16.2/dist/index.min.js"></script>
-  <script src="https://unpkg.com/markmap-toolbar@0.16.2/dist/index.min.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/markmap-toolbar@0.16.2/dist/style.css" />
   <style>
-    :root {
-      --bg: #0b0f14;
-      --panel: #0f1520;
-      --border: #1f2a37;
-      --text: #e5e7eb;
-      --muted: #9ca3af;
-      --accent: #60a5fa;
-    }
-    [data-theme="light"] {
-      --bg: #f8fafc;
-      --panel: #ffffff;
-      --border: #e5e7eb;
-      --text: #0f172a;
-      --muted: #475569;
-      --accent: #2563eb;
-    }
-    html, body { height: 100%; }
-    body {
-      margin: 0; display: flex; flex-direction: column;
-      background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu;
-    }
-    header {
-      display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border);
-      background: var(--panel); position: sticky; top: 0; z-index: 10;
-    }
-    header h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
-    .row { flex: 1; min-height: 0; display: grid; grid-template-columns: 420px 1fr; }
-    .left, .right { min-width: 0; }
-    .left {
-      display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--panel);
-    }
-    .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
-    .controls button, .controls select, .controls a.label {
-      appearance: none; border: 1px solid var(--border); background: transparent; color: var(--text);
-      padding: 8px 10px; border-radius: 10px; cursor: pointer; font-weight: 600;
-    }
-    .controls button:hover, .controls select:hover { border-color: var(--accent); }
-    .controls .spacer { flex: 1; }
-    textarea {
-      flex: 1; width: 100%; background: transparent; color: var(--text); border: 0; outline: none; resize: none;
-      padding: 14px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    }
-    .right { position: relative; }
-    #mindmap { position: absolute; inset: 0; }
-    .footer { padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); background: var(--panel); }
-    .badge { color: var(--muted); font-weight: 600; }
-    .mm-toolbar { position: absolute; right: 14px; top: 14px; z-index: 20; }
-    @media (max-width: 900px){ .row { grid-template-columns: 1fr; } .left { border-right: 0; border-bottom: 1px solid var(--border);} }
+    :root { --bg:#0b0f14; --panel:#0f1520; --border:#1f2a37; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; --node:#111827; --edge:#374151; --nodeText:#f3f4f6; }
+    [data-theme="light"] { --bg:#f8fafc; --panel:#ffffff; --border:#e5e7eb; --text:#0f172a; --muted:#475569; --accent:#2563eb; --node:#f1f5f9; --edge:#94a3b8; --nodeText:#0f172a; }
+    html,body{height:100%}
+    body{margin:0;display:flex;flex-direction:column;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu}
+    header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:10}
+    header h1{font-size:14px;margin:0;font-weight:600;letter-spacing:.2px}
+    .row{flex:1;min-height:0;display:grid;grid-template-columns:420px 1fr}
+    .left,.right{min-width:0}
+    .left{display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--panel)}
+    .controls{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-bottom:1px solid var(--border)}
+    .controls button,.controls select,.controls a.label{appearance:none;border:1px solid var(--border);background:transparent;color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:600}
+    .controls button:hover,.controls select:hover{border-color:var(--accent)}
+    .controls .spacer{flex:1}
+    textarea{flex:1;width:100%;background:transparent;color:var(--text);border:0;outline:none;resize:none;padding:14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+    .right{position:relative}
+    #mindmap{position:absolute;inset:0}
+    .footer{padding:8px 12px;border-top:1px solid var(--border);color:var(--muted);background:var(--panel)}
+    .badge{color:var(--muted);font-weight:600}
+    .mm-toolbar{position:absolute;right:14px;top:14px;z-index:20}
+    .status{margin-left:auto;font-size:12px;color:var(--muted)}
+    .status.ok{color:#22c55e}
+    .status.err{color:#ef4444}
+    .status.warn{color:#f59e0b}
+    .hint{font-size:12px;color:var(--muted)}
+    .pill{font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:999px}
+    .legend{position:absolute;left:14px;top:14px;display:flex;gap:8px}
+    @media (max-width:900px){.row{grid-template-columns:1fr}.left{border-right:0;border-bottom:1px solid var(--border)}}
   </style>
 </head>
 <body data-theme="dark">
   <header>
     <h1>Markdown → Mindmap</h1>
-    <span class="badge">(Markmap‑style, client‑side)</span>
+    <span class="badge">(Markmap‑style)</span>
+    <span id="status" class="status">Loading…</span>
   </header>
 
   <div class="row">
@@ -86,137 +61,248 @@
           <option value="mindmap">Mindmap</option>
           <option value="tree">Tree</option>
         </select>
+        <button id="btn-reload">Reload Libs</button>
       </div>
       <textarea id="md" placeholder="# Start typing Markdown here...\n\n- Use headings to create main nodes\n  - Sub bullets become branches\n\n> Tip: Click ‘Sample’ to load an example."></textarea>
-      <div class="footer">Made with <a href="https://markmap.js.org/" target="_blank" rel="noreferrer">markmap</a>. All in your browser.</div>
+      <div class="footer">Made with <a href="https://markmap.js.org/" target="_blank" rel="noreferrer">markmap</a> when available. Falls back to an offline renderer if CDNs are blocked. <span class="hint" id="source-hint"></span></div>
     </section>
 
     <section class="right">
-      <svg id="mindmap"></svg>
+      <div class="legend"><span id="mode-pill" class="pill">mode: loading…</span></div>
+      <svg id="mindmap" role="img" aria-label="Mindmap visualization"></svg>
       <div id="toolbar" class="mm-toolbar"></div>
     </section>
   </div>
 
   <script>
+    // ==============================
     // Utilities
-    const $ = (q) => document.querySelector(q);
-    const debounce = (fn, wait=250) => { let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a), wait)} };
-    const encodeHash = (text) => '#mm=' + btoa(unescape(encodeURIComponent(text)));
-    const decodeHash = () => {
-      const m = location.hash.match(/^#mm=(.*)$/);
-      if (!m) return '';
-      try { return decodeURIComponent(escape(atob(m[1]))); } catch { return ''; }
-    };
+    // ==============================
+    const $ = (q)=>document.querySelector(q);
+    const debounce = (fn,wait=250)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); } };
+    const encodeHash=(text)=> '#mm='+ btoa(unescape(encodeURIComponent(text)));
+    const decodeHash=()=>{ const m=location.hash.match(/^#mm=(.*)$/); if(!m) return ''; try{ return decodeURIComponent(escape(atob(m[1])));}catch{return '';} };
+    const STATUS = $('#status'); const SOURCE_HINT = $('#source-hint'); const MODE_PILL = $('#mode-pill');
+    function setStatus(msg, cls){ STATUS.textContent = msg; STATUS.className = 'status ' + (cls||''); }
+    function setSourceHint(txt){ SOURCE_HINT.textContent = txt ? ` • source: ${txt}` : ''; }
+    function setMode(m){ MODE_PILL.textContent = `mode: ${m}`; }
 
-    // Markmap setup
-    const { transform } = window.markmap;
-    const { Markmap } = window.markmap;
-    const { Toolbar } = window.markmapToolbar;
+    // ==============================
+    // Robust loader with fallbacks (may be blocked in sandbox)
+    // ==============================
+    function loadScript(src){
+      return new Promise((resolve,reject)=>{ const s=document.createElement('script'); s.src=src; s.async=true; s.crossOrigin='anonymous'; s.onload=()=>resolve(src); s.onerror=()=>reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
+    }
+    function loadCSS(href){ return new Promise((resolve,reject)=>{ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; l.crossOrigin='anonymous'; l.onload=()=>resolve(href); l.onerror=()=>reject(new Error('Failed to load '+href)); document.head.appendChild(l); }); }
 
-    const svg = document.getElementById('mindmap');
-    const mm = Markmap.create(svg, { initialExpandLevel: 3 });
-    const toolbar = new Toolbar();
-    toolbar.attach(mm);
-    document.getElementById('toolbar').append(toolbar.render());
-
-    // State
-    const mdEl = $('#md');
-    const themeEl = $('#theme');
-    const layoutEl = $('#layout');
-
-    function applyLayout(){
-      const layout = layoutEl.value;
-      mm.setOptions({ layout });
-      render();
+    async function loadMarkmapUMD(){
+      const a={ lib:'https://unpkg.com/markmap-lib@0.16.2/dist/browser/index.min.js', view:'https://unpkg.com/markmap-view@0.16.2/dist/index.min.js', toolbar:'https://unpkg.com/markmap-toolbar@0.16.2/dist/index.min.js', toolbarCSS:'https://unpkg.com/markmap-toolbar@0.16.2/dist/style.css'};
+      const b={ lib:'https://cdn.jsdelivr.net/npm/markmap-lib@0.16.2/dist/browser/index.min.js', view:'https://cdn.jsdelivr.net/npm/markmap-view@0.16.2/dist/index.min.js', toolbar:'https://cdn.jsdelivr.net/npm/markmap-toolbar@0.16.2/dist/index.min.js', toolbarCSS:'https://cdn.jsdelivr.net/npm/markmap-toolbar@0.16.2/dist/style.css'};
+      async function trySet(cdn,label){ await loadScript(cdn.lib); await loadScript(cdn.view); await Promise.all([loadScript(cdn.toolbar), loadCSS(cdn.toolbarCSS).catch(()=>{})]); if(!window.markmap||!window.markmapToolbar) throw new Error('Globals missing'); setSourceHint(label+' (UMD)'); }
+      try{ await trySet(a,'unpkg'); return true; }catch(e){ console.warn('unpkg failed', e); }
+      try{ await trySet(b,'jsDelivr'); return true; }catch(e){ console.warn('jsDelivr failed', e); }
+      return false;
     }
 
-    function applyTheme(){
-      document.body.setAttribute('data-theme', themeEl.value);
+    async function loadMarkmapESM(){
+      try{
+        const lib = await import('https://esm.sh/markmap-lib@0.16.2');
+        const view = await import('https://esm.sh/markmap-view@0.16.2');
+        const toolbar = await import('https://esm.sh/markmap-toolbar@0.16.2');
+        window.markmap = Object.assign({}, lib, view);
+        window.markmapToolbar = toolbar;
+        try { await loadCSS('https://unpkg.com/markmap-toolbar@0.16.2/dist/style.css'); } catch {}
+        setSourceHint('esm.sh (ESM)');
+        return true;
+      }catch(err){ console.warn('ESM fallback failed', err); return false; }
     }
+
+    async function initLibraries(){
+      setStatus('Loading libraries…');
+      if (await loadMarkmapUMD()) return 'markmap';
+      if (await loadMarkmapESM()) return 'markmap';
+      return 'offline';
+    }
+
+    // ==============================
+    // Offline fallback renderer (no external libs)
+    // ==============================
+    function parseMarkdownBasic(md){
+      // Very small parser: supports headings (# .. ######) and unordered lists (- * +)
+      const lines = md.split(/\r?\n/);
+      const root = { text:'ROOT', children:[] };
+      const stack = [{ level:0, node: root }];
+      const listStack = [{ indent: -1, node: root }];
+
+      function addChild(parent, text){ const n={ text:text.trim(), children:[] }; parent.children.push(n); return n; }
+
+      for (let raw of lines){
+        const line = raw.replace(/\t/g,'    ');
+        const h = line.match(/^(#{1,6})\s+(.+)$/);
+        if (h){
+          const level = h[1].length; const text = h[2];
+          while (stack.length && stack[stack.length-1].level >= level) stack.pop();
+          const parent = stack[stack.length-1].node;
+          const node = addChild(parent, text);
+          stack.push({ level, node });
+          // reset list context at each heading
+          listStack.length = 1; listStack[0] = { indent:-1, node };
+          continue;
+        }
+        const m = line.match(/^(\s*)([-*+])\s+(.+)$/);
+        if (m){
+          const indent = m[1].length; const text = m[3];
+          while (listStack.length && listStack[listStack.length-1].indent >= indent) listStack.pop();
+          const parent = listStack[listStack.length-1].node;
+          const node = addChild(parent, text);
+          listStack.push({ indent, node });
+        }
+      }
+
+      // If no headings at all, put entire doc under a default heading
+      if (root.children.length===0){ root.children.push({ text:'Mindmap', children:[] }); }
+      return root;
+    }
+
+    function layoutTree(root){
+      // Simple left-to-right tidy layout (fixed node size)
+      const xGap = 220, yGap = 42; const nodeW = 200, nodeH = 28;
+      let yCursor = 0;
+      function dfs(node, depth){
+        if (!node.children || node.children.length===0){
+          const y = yCursor; yCursor += yGap; return { x: depth*xGap, y, w: nodeW, h: nodeH, node, children:[] };
+        }
+        const childrenLayouts = node.children.map(ch => dfs(ch, depth+1));
+        const minY = childrenLayouts[0].y; const maxY = childrenLayouts[childrenLayouts.length-1].y;
+        const y = (minY + maxY)/2; return { x: depth*xGap, y, w: nodeW, h: nodeH, node, children: childrenLayouts };
+      }
+      const layout = dfs(root, 0);
+      const height = Math.max(400, yCursor + 40);
+      const width = Math.max(800, (maxDepth(root)+1)*xGap + 200);
+      return { layout, width, height, nodeW, nodeH };
+
+      function maxDepth(n){ if(!n.children||!n.children.length) return 0; return 1 + Math.max(...n.children.map(maxDepth)); }
+    }
+
+    function renderOffline(svg, md){
+      const parsed = parseMarkdownBasic(md);
+      // If the parsed root has a single heading, use it as root; otherwise keep generated root
+      const root = (parsed.children.length===1 ? parsed.children[0] : parsed);
+      const { layout, width, height, nodeW, nodeH } = layoutTree(root);
+
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.innerHTML = '';
+
+      const gEdges = document.createElementNS('http://www.w3.org/2000/svg','g'); gEdges.setAttribute('stroke', 'var(--edge)'); gEdges.setAttribute('fill','none'); svg.appendChild(gEdges);
+      const gNodes = document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(gNodes);
+
+      function drawTree(n){
+        n.children.forEach(ch => {
+          const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+          const x1 = n.x + nodeW; const y1 = n.y + nodeH/2;
+          const x2 = ch.x; const y2 = ch.y + nodeH/2;
+          const mx = (x1 + x2)/2; // curve control
+          path.setAttribute('d', `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
+          path.setAttribute('stroke-width','2'); gEdges.appendChild(path);
+          drawTree(ch);
+        });
+        // Node
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
+        rect.setAttribute('rx', '8'); rect.setAttribute('ry','8');
+        rect.setAttribute('width', nodeW); rect.setAttribute('height', nodeH);
+        rect.setAttribute('fill','var(--node)'); rect.setAttribute('stroke','var(--edge)');
+        const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+        text.setAttribute('x', n.x + 10); text.setAttribute('y', n.y + 18);
+        text.setAttribute('fill','var(--nodeText)');
+        text.setAttribute('font-size','12'); text.setAttribute('font-weight','600');
+        const s = (n.node.text||'').replace(/<[^>]+>/g,'');
+        text.textContent = s.length>36 ? s.slice(0,33)+'…' : s;
+        g.appendChild(rect); g.appendChild(text); gNodes.appendChild(g);
+      }
+      drawTree(layout);
+    }
+
+    // ==============================
+    // App logic (supports Markmap or Offline)
+    // ==============================
+    let mm, transform, Toolbar; // if Markmap is available
 
     function render(){
+      const mdEl=$('#md'); const svg=$('#mindmap');
       const md = mdEl.value || '# Mindmap\n\nStart typing in the left panel.';
-      const { root } = transform(md);
-      mm.setData(root);
-      mm.fit();
-      // Persist to URL hash for shareable link
-      history.replaceState(null, '', encodeHash(md));
+      if (window.markmap && transform){
+        try{ const { root } = transform(md); mm.setData(root); mm.fit(); history.replaceState(null,'',encodeHash(md)); setStatus('Ready ✓','ok'); }
+        catch(e){ console.error(e); setStatus('Render error','err'); }
+      } else {
+        try{ renderOffline(svg, md); history.replaceState(null,'',encodeHash(md)); setStatus('Ready (offline) ✓','ok'); }
+        catch(e){ console.error(e); setStatus('Offline render error','err'); }
+      }
     }
 
-    const renderDebounced = debounce(render, 200);
+    // ========== Tests ==========
+    function runSelfTests(){
+      const tests=[];
+      // Existing tests (only when Markmap is present)
+      if (window.markmap && window.markmapToolbar){
+        tests.push({ name:'Globals available', pass: !!(window.markmap && window.markmapToolbar) });
+        try{ const { root } = transform('# A\n\n- B\n  - C'); tests.push({ name:'transform() returns root', pass: !!root && Array.isArray(root.children) }); tests.push({ name:'root has children', pass:(root.children?.length||0)>0 }); }
+        catch(e){ tests.push({ name:'transform() executes', pass:false, error:e.message }); }
+      } else {
+        // Offline tests
+        try{ const t = parseMarkdownBasic('# A\n\n- B\n  - C'); tests.push({ name:'offline parse root has children', pass: (t.children?.length||0) > 0 }); }catch(e){ tests.push({ name:'offline parse root has children', pass:false, error:e.message }); }
+        try{ const t = parseMarkdownBasic('No headings\n- one\n- two'); tests.push({ name:'offline default root label', pass: (t.children?.length||0) >= 1 }); }catch(e){ tests.push({ name:'offline default root label', pass:false, error:e.message }); }
+        try{ const s = '# H1\n\n- item'; const enc = encodeHash(s); const dec = decodeHash.call({},{ }); tests.push({ name:'hash encode prefix', pass: enc.startsWith('#mm=') }); }
+        catch(e){ tests.push({ name:'hash encode prefix', pass:false, error:e.message }); }
+      }
+      console.table(tests);
+      const allPass = tests.every(t=>t.pass); setStatus(allPass? 'Ready ✓' : 'Diagnostics warning', allPass? 'ok':'warn');
+    }
 
-    // Sample content
+    function initApp(mode){
+      const svg=$('#mindmap'); const mdEl=$('#md'); const themeEl=$('#theme'); const layoutEl=$('#layout');
+      $('#btn-reload').addEventListener('click', ()=>location.reload());
+      $('#file').addEventListener('change', async (e)=>{ const file=e.target.files?.[0]; if(!file) return; const text=await file.text(); mdEl.value=text; render(); e.target.value=''; });
+      $('#btn-new').addEventListener('click', ()=>{ mdEl.value=''; render(); });
+      $('#btn-sample').addEventListener('click', ()=>{ mdEl.value=SAMPLE; render(); });
+      $('#btn-copy').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(location.href); alert('Shareable link copied.'); }catch{ alert('Failed to copy link.'); } });
+      $('#btn-svg').addEventListener('click', ()=>{ const serializer=new XMLSerializer(); const svgText=serializer.serializeToString(svg); const blob=new Blob([svgText],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='mindmap.svg'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); });
+      $('#btn-png').addEventListener('click', ()=>{ const serializer=new XMLSerializer(); const svgText=serializer.serializeToString(svg); const img=new Image(); const svgBlob=new Blob([svgText],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(svgBlob); img.onload=()=>{ const scale=2; const canvas=document.createElement('canvas'); canvas.width=img.width*scale; canvas.height=img.height*scale; const ctx=canvas.getContext('2d'); ctx.setTransform(scale,0,0,scale,0,0); ctx.drawImage(img,0,0); canvas.toBlob((blob)=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mindmap.png'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); },'image/png'); URL.revokeObjectURL(url); }; img.onerror=()=>{ alert('PNG export failed. Try SVG export instead.'); URL.revokeObjectURL(url); }; img.src=url; });
+      function applyLayout(){ /* placeholder for future offline layouts */ render(); }
+      function applyTheme(){ document.body.setAttribute('data-theme', themeEl.value); render(); }
+      themeEl.addEventListener('change', applyTheme); layoutEl.addEventListener('change', applyLayout);
+      mdEl.addEventListener('input', debounce(render, 200));
+
+      // Initialize Markmap instance if available
+      if (mode==='markmap'){
+        const { Markmap } = window.markmap; ({ transform } = window.markmap); ({ Toolbar } = window.markmapToolbar);
+        mm = Markmap.create(svg, { initialExpandLevel: 3 });
+        const toolbar = new Toolbar(); toolbar.attach(mm); $('#toolbar').append(toolbar.render());
+        setMode('markmap'); setSourceHint(SOURCE_HINT.textContent || '');
+      } else {
+        setMode('offline'); setSourceHint('offline renderer');
+      }
+
+      // Load from URL hash (if present)
+      const initial = decodeHash();
+      $('#md').value = initial || `# Mindmap\n\nType on the left. Headings become main nodes, lists become branches.`;
+      applyTheme(); render(); runSelfTests();
+      window.addEventListener('resize', debounce(()=>{ if (mm) mm.fit(); else render(); }, 100));
+    }
+
     const SAMPLE = `# Projek: Sistem Rangkaian Kampus\n\n## Reka Bentuk Topologi\n- Core Layer\n  - Dual core switch\n- Distribution Layer\n  - VLAN segmentation\n- Access Layer\n  - PoE for AP & CCTV\n\n## Keselamatan\n- Firewall NGFW\n- NAC (802.1X)\n- IDS/IPS\n\n## Pemantauan\n- SNMPv3\n- Syslog + SIEM\n- NetFlow\n\n## Pelaksanaan\n- Fasa 1: Audit\n- Fasa 2: Konfigurasi\n- Fasa 3: UAT & Handover`;
 
-    // File import
-    $('#file').addEventListener('change', async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const text = await file.text();
-      mdEl.value = text; render(); e.target.value = '';
-    });
-
-    // Buttons
-    $('#btn-new').addEventListener('click', () => { mdEl.value=''; render(); });
-    $('#btn-sample').addEventListener('click', () => { mdEl.value = SAMPLE; render(); });
-    $('#btn-copy').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(location.href); alert('Shareable link copied.'); }
-      catch { alert('Failed to copy link.'); }
-    });
-
-    // Export SVG
-    $('#btn-svg').addEventListener('click', () => {
-      const serializer = new XMLSerializer();
-      const svgText = serializer.serializeToString(svg);
-      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'mindmap.svg'; a.click();
-      setTimeout(()=>URL.revokeObjectURL(url), 1000);
-    });
-
-    // Export PNG (rasterize SVG)
-    $('#btn-png').addEventListener('click', () => {
-      const serializer = new XMLSerializer();
-      const svgText = serializer.serializeToString(svg);
-      const img = new Image();
-      const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-      img.onload = () => {
-        const scale = 2; // 2x for sharper PNG
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale; canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob((blob) => {
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob); a.download = 'mindmap.png'; a.click();
-          setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
-        }, 'image/png');
-        URL.revokeObjectURL(url);
-      };
-      img.onerror = () => { alert('PNG export failed. Try SVG export instead.'); URL.revokeObjectURL(url); };
-      img.src = url;
-    });
-
-    // Theme & layout
-    themeEl.addEventListener('change', applyTheme);
-    layoutEl.addEventListener('change', applyLayout);
-
-    // Live typing
-    mdEl.addEventListener('input', renderDebounced);
-
-    // Load from URL hash (if present)
-    const initial = decodeHash();
-    if (initial) mdEl.value = initial; else mdEl.value = `# Mindmap\n\nType on the left. Headings become main nodes, lists become branches.`;
-
-    applyTheme();
-    applyLayout();
-    render();
-
-    // Handle window resize for proper fit
-    window.addEventListener('resize', debounce(()=>mm.fit(), 100));
+    // Bootstrap
+    (async()=>{
+      try{
+        const mode = await initLibraries();
+        setStatus(mode==='markmap' ? 'Libraries loaded' : 'Offline mode', mode==='markmap' ? 'ok' : 'warn');
+        initApp(mode);
+      }catch(err){
+        console.error(err); setStatus('Initialization error','err'); setMode('offline'); setSourceHint('offline renderer'); initApp('offline');
+      }
+    })();
   </script>
 </body>
 </html>
