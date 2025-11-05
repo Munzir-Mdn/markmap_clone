@@ -5,6 +5,11 @@ Transform your **Markdown notes** into beautiful **interactive mindmaps** — al
 > ⚡ A lightweight, client-side clone inspired by [markmap.js.org](https://markmap.js.org), built using **HTML**, **JavaScript**, and **Markmap libraries**.
 
 ---
+## 🚀 Preview
+
+👉 Demo: *[(Markdown → Mindmap (Markmap-style Clone))](https://munzir-mdn.github.io/markmap_clone/)*
+
+---
 
 ## 🚀 Features
 
