@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Markdown → Mindmap (Markmap‑style)</title>
+  <link rel="icon" href="data:," />
+  <!-- Markmap core (via CDN) -->
+  <script src="https://unpkg.com/markmap-lib@0.16.2/dist/browser/index.min.js"></script>
+  <script src="https://unpkg.com/markmap-view@0.16.2/dist/index.min.js"></script>
+  <script src="https://unpkg.com/markmap-toolbar@0.16.2/dist/index.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/markmap-toolbar@0.16.2/dist/style.css" />
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #0f1520;
+      --border: #1f2a37;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #60a5fa;
+    }
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --panel: #ffffff;
+      --border: #e5e7eb;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; display: flex; flex-direction: column;
+      background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu;
+    }
+    header {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border);
+      background: var(--panel); position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { font-size: 14px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+    .row { flex: 1; min-height: 0; display: grid; grid-template-columns: 420px 1fr; }
+    .left, .right { min-width: 0; }
+    .left {
+      display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--panel);
+    }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); }
+    .controls button, .controls select, .controls a.label {
+      appearance: none; border: 1px solid var(--border); background: transparent; color: var(--text);
+      padding: 8px 10px; border-radius: 10px; cursor: pointer; font-weight: 600;
+    }
+    .controls button:hover, .controls select:hover { border-color: var(--accent); }
+    .controls .spacer { flex: 1; }
+    textarea {
+      flex: 1; width: 100%; background: transparent; color: var(--text); border: 0; outline: none; resize: none;
+      padding: 14px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    .right { position: relative; }
+    #mindmap { position: absolute; inset: 0; }
+    .footer { padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); background: var(--panel); }
+    .badge { color: var(--muted); font-weight: 600; }
+    .mm-toolbar { position: absolute; right: 14px; top: 14px; z-index: 20; }
+    @media (max-width: 900px){ .row { grid-template-columns: 1fr; } .left { border-right: 0; border-bottom: 1px solid var(--border);} }
+  </style>
+</head>
+<body data-theme="dark">
+  <header>
+    <h1>Markdown → Mindmap</h1>
+    <span class="badge">(Markmap‑style, client‑side)</span>
+  </header>
+
+  <div class="row">
+    <section class="left">
+      <div class="controls">
+        <button id="btn-new">New</button>
+        <button id="btn-sample">Sample</button>
+        <label class="label" for="file">Import .md</label>
+        <input id="file" type="file" accept=".md,.markdown,text/markdown" hidden />
+        <button id="btn-copy">Copy Link</button>
+        <button id="btn-svg">Export SVG</button>
+        <button id="btn-png">Export PNG</button>
+        <span class="spacer"></span>
+        <select id="theme">
+          <option value="dark" selected>Dark</option>
+          <option value="light">Light</option>
+        </select>
+        <select id="layout">
+          <option value="mindmap">Mindmap</option>
+          <option value="tree">Tree</option>
+        </select>
+      </div>
+      <textarea id="md" placeholder="# Start typing Markdown here...\n\n- Use headings to create main nodes\n  - Sub bullets become branches\n\n> Tip: Click ‘Sample’ to load an example."></textarea>
+      <div class="footer">Made with <a href="https://markmap.js.org/" target="_blank" rel="noreferrer">markmap</a>. All in your browser.</div>
+    </section>
+
+    <section class="right">
+      <svg id="mindmap"></svg>
+      <div id="toolbar" class="mm-toolbar"></div>
+    </section>
+  </div>
+
+  <script>
+    // Utilities
+    const $ = (q) => document.querySelector(q);
+    const debounce = (fn, wait=250) => { let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a), wait)} };
+    const encodeHash = (text) => '#mm=' + btoa(unescape(encodeURIComponent(text)));
+    const decodeHash = () => {
+      const m = location.hash.match(/^#mm=(.*)$/);
+      if (!m) return '';
+      try { return decodeURIComponent(escape(atob(m[1]))); } catch { return ''; }
+    };
+
+    // Markmap setup
+    const { transform } = window.markmap;
+    const { Markmap } = window.markmap;
+    const { Toolbar } = window.markmapToolbar;
+
+    const svg = document.getElementById('mindmap');
+    const mm = Markmap.create(svg, { initialExpandLevel: 3 });
+    const toolbar = new Toolbar();
+    toolbar.attach(mm);
+    document.getElementById('toolbar').append(toolbar.render());
+
+    // State
+    const mdEl = $('#md');
+    const themeEl = $('#theme');
+    const layoutEl = $('#layout');
+
+    function applyLayout(){
+      const layout = layoutEl.value;
+      mm.setOptions({ layout });
+      render();
+    }
+
+    function applyTheme(){
+      document.body.setAttribute('data-theme', themeEl.value);
+    }
+
+    function render(){
+      const md = mdEl.value || '# Mindmap\n\nStart typing in the left panel.';
+      const { root } = transform(md);
+      mm.setData(root);
+      mm.fit();
+      // Persist to URL hash for shareable link
+      history.replaceState(null, '', encodeHash(md));
+    }
+
+    const renderDebounced = debounce(render, 200);
+
+    // Sample content
+    const SAMPLE = `# Projek: Sistem Rangkaian Kampus\n\n## Reka Bentuk Topologi\n- Core Layer\n  - Dual core switch\n- Distribution Layer\n  - VLAN segmentation\n- Access Layer\n  - PoE for AP & CCTV\n\n## Keselamatan\n- Firewall NGFW\n- NAC (802.1X)\n- IDS/IPS\n\n## Pemantauan\n- SNMPv3\n- Syslog + SIEM\n- NetFlow\n\n## Pelaksanaan\n- Fasa 1: Audit\n- Fasa 2: Konfigurasi\n- Fasa 3: UAT & Handover`;
+
+    // File import
+    $('#file').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      mdEl.value = text; render(); e.target.value = '';
+    });
+
+    // Buttons
+    $('#btn-new').addEventListener('click', () => { mdEl.value=''; render(); });
+    $('#btn-sample').addEventListener('click', () => { mdEl.value = SAMPLE; render(); });
+    $('#btn-copy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(location.href); alert('Shareable link copied.'); }
+      catch { alert('Failed to copy link.'); }
+    });
+
+    // Export SVG
+    $('#btn-svg').addEventListener('click', () => {
+      const serializer = new XMLSerializer();
+      const svgText = serializer.serializeToString(svg);
+      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'mindmap.svg'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    });
+
+    // Export PNG (rasterize SVG)
+    $('#btn-png').addEventListener('click', () => {
+      const serializer = new XMLSerializer();
+      const svgText = serializer.serializeToString(svg);
+      const img = new Image();
+      const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      img.onload = () => {
+        const scale = 2; // 2x for sharper PNG
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale; canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = 'mindmap.png'; a.click();
+          setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+        }, 'image/png');
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => { alert('PNG export failed. Try SVG export instead.'); URL.revokeObjectURL(url); };
+      img.src = url;
+    });
+
+    // Theme & layout
+    themeEl.addEventListener('change', applyTheme);
+    layoutEl.addEventListener('change', applyLayout);
+
+    // Live typing
+    mdEl.addEventListener('input', renderDebounced);
+
+    // Load from URL hash (if present)
+    const initial = decodeHash();
+    if (initial) mdEl.value = initial; else mdEl.value = `# Mindmap\n\nType on the left. Headings become main nodes, lists become branches.`;
+
+    applyTheme();
+    applyLayout();
+    render();
+
+    // Handle window resize for proper fit
+    window.addEventListener('resize', debounce(()=>mm.fit(), 100));
+  </script>
+</body>
+</html>
