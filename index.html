@@ -184,29 +184,67 @@
       function maxDepth(n){ if(!n.children||!n.children.length) return 0; return 1 + Math.max(...n.children.map(maxDepth)); }
     }
 
+    // --- Offline renderer state (persists collapse between renders during session)
+    const offlineState = { collapsed: new Set(), scale: 1, offsetX: 0, offsetY: 0 };
+
+    function nodeKeyFromPath(pathArr){ return pathArr.join(' / '); }
+
     function renderOffline(svg, md){
       const parsed = parseMarkdownBasic(md);
-      // If the parsed root has a single heading, use it as root; otherwise keep generated root
       const root = (parsed.children.length===1 ? parsed.children[0] : parsed);
+
+      // apply collapsed info onto nodes by marking hidden children
+      function applyCollapse(node, path){
+        const key = nodeKeyFromPath(path);
+        node.__key = key;
+        node.__collapsed = offlineState.collapsed.has(key);
+        if (node.__collapsed) return;
+        (node.children||[]).forEach((ch,i)=>applyCollapse(ch, path.concat(ch.text||('child'+i))));
+      }
+      applyCollapse(root, [root.text||'ROOT']);
+
+      // custom layout that skips hidden children
+      function layoutTree(root){
+        const xGap = 220, yGap = 42; const nodeW = 200, nodeH = 28;
+        let yCursor = 0;
+        function dfs(node, depth){
+          const visChildren = (node.__collapsed? [] : (node.children||[]));
+          if (visChildren.length===0){
+            const y = yCursor; yCursor += yGap; return { x: depth*xGap, y, w: nodeW, h: nodeH, node, children:[] };
+          }
+          const childrenLayouts = visChildren.map(ch => dfs(ch, depth+1));
+          const minY = childrenLayouts[0].y; const maxY = childrenLayouts[childrenLayouts.length-1].y;
+          const y = (minY + maxY)/2; return { x: depth*xGap, y, w: nodeW, h: nodeH, node, children: childrenLayouts };
+        }
+        const layout = dfs(root, 0);
+        const height = Math.max(400, yCursor + 40);
+        const width = Math.max(800, (maxDepth(root)+1)*xGap + 200);
+        return { layout, width, height, nodeW, nodeH };
+        function maxDepth(n){ if(!n.children||!n.children.length||n.__collapsed) return 0; return 1 + Math.max(...n.children.map(maxDepth)); }
+      }
+
       const { layout, width, height, nodeW, nodeH } = layoutTree(root);
 
       svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
       svg.innerHTML = '';
 
-      const gEdges = document.createElementNS('http://www.w3.org/2000/svg','g'); gEdges.setAttribute('stroke', 'var(--edge)'); gEdges.setAttribute('fill','none'); svg.appendChild(gEdges);
-      const gNodes = document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(gNodes);
+      // viewport wrapper for pan/zoom
+      const viewport = document.createElementNS('http://www.w3.org/2000/svg','g');
+      viewport.setAttribute('id','viewport');
+      svg.appendChild(viewport);
+      const gEdges = document.createElementNS('http://www.w3.org/2000/svg','g'); gEdges.setAttribute('stroke', 'var(--edge)'); gEdges.setAttribute('fill','none'); viewport.appendChild(gEdges);
+      const gNodes = document.createElementNS('http://www.w3.org/2000/svg','g'); viewport.appendChild(gNodes);
 
       function drawTree(n){
         n.children.forEach(ch => {
           const path = document.createElementNS('http://www.w3.org/2000/svg','path');
           const x1 = n.x + nodeW; const y1 = n.y + nodeH/2;
           const x2 = ch.x; const y2 = ch.y + nodeH/2;
-          const mx = (x1 + x2)/2; // curve control
+          const mx = (x1 + x2)/2;
           path.setAttribute('d', `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
           path.setAttribute('stroke-width','2'); gEdges.appendChild(path);
           drawTree(ch);
         });
-        // Node
         const g = document.createElementNS('http://www.w3.org/2000/svg','g');
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
         rect.setAttribute('x', n.x); rect.setAttribute('y', n.y);
@@ -215,13 +253,44 @@
         rect.setAttribute('fill','var(--node)'); rect.setAttribute('stroke','var(--edge)');
         const text = document.createElementNS('http://www.w3.org/2000/svg','text');
         text.setAttribute('x', n.x + 10); text.setAttribute('y', n.y + 18);
-        text.setAttribute('fill','var(--nodeText)');
-        text.setAttribute('font-size','12'); text.setAttribute('font-weight','600');
-        const s = (n.node.text||'').replace(/<[^>]+>/g,'');
-        text.textContent = s.length>36 ? s.slice(0,33)+'…' : s;
+        text.setAttribute('fill','var(--nodeText)'); text.setAttribute('font-size','12'); text.setAttribute('font-weight','600');
+        const s = (n.node.text||'').replace(/<[^>]+>/g,''); text.textContent = s.length>36 ? s.slice(0,33)+'…' : s;
+        // collapse toggle indicator
+        if (n.node.children && n.node.children.length){
+          const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          circ.setAttribute('cx', n.x + nodeW - 12); circ.setAttribute('cy', n.y + 14); circ.setAttribute('r','6');
+          circ.setAttribute('fill', n.node.__collapsed ? '#ef4444' : '#22c55e');
+          circ.setAttribute('stroke','var(--edge)'); g.appendChild(circ);
+        }
+        // click to toggle collapse
+        g.addEventListener('click', (ev)=>{
+          if (!n.node.children || !n.node.children.length) return;
+          const key = n.node.__key; if (offlineState.collapsed.has(key)) offlineState.collapsed.delete(key); else offlineState.collapsed.add(key);
+          render();
+          ev.stopPropagation();
+        });
         g.appendChild(rect); g.appendChild(text); gNodes.appendChild(g);
       }
       drawTree(layout);
+
+      // apply pan/zoom transform
+      function applyTransform(){ viewport.setAttribute('transform', `translate(${offlineState.offsetX},${offlineState.offsetY}) scale(${offlineState.scale})`); }
+      applyTransform();
+
+      // zoom with wheel
+      svg.onwheel = (e)=>{
+        e.preventDefault();
+        const scaleFactor = e.deltaY < 0 ? 1.1 : 0.9; // zoom in/out
+        const { left, top } = svg.getBoundingClientRect();
+        const mx = e.clientX - left - offlineState.offsetX; const my = e.clientY - top - offlineState.offsetY;
+        offlineState.offsetX -= mx*(scaleFactor-1); offlineState.offsetY -= my*(scaleFactor-1);
+        offlineState.scale *= scaleFactor; applyTransform();
+      };
+      // pan with drag
+      let panning=false, sx=0, sy=0, ox=0, oy=0;
+      svg.addEventListener('pointerdown',(e)=>{ panning=true; sx=e.clientX; sy=e.clientY; ox=offlineState.offsetX; oy=offlineState.offsetY; svg.setPointerCapture(e.pointerId); });
+      svg.addEventListener('pointermove',(e)=>{ if(!panning) return; offlineState.offsetX = ox + (e.clientX - sx); offlineState.offsetY = oy + (e.clientY - sy); applyTransform(); });
+      svg.addEventListener('pointerup',()=>{ panning=false; });
     }
 
     // ==============================
