@@ -88,13 +88,81 @@
     function setMode(m){ MODE_PILL.textContent = `mode: ${m}`; }
 
     // ==============================
-    // CDN loader (will often be blocked in sandbox). If all fail, we go offline.
+    // Export helpers (fixes for PNG/SVG not downloading)
     // ==============================
-    function loadScript(src){
-      return new Promise((resolve,reject)=>{ const s=document.createElement('script'); s.src=src; s.async=true; s.crossOrigin='anonymous'; s.onload=()=>resolve(src); s.onerror=()=>reject(new Error('Failed to load '+src)); document.head.appendChild(s); });
+    function cloneSvgWithSize(){
+      const svg = document.getElementById('mindmap');
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+      clone.removeAttribute('id');
+      const vb = clone.getAttribute('viewBox');
+      if (vb){
+        const parts = vb.split(/\s+/).map(Number);
+        const w = parts[2], h = parts[3];
+        if (Number.isFinite(w) && Number.isFinite(h) && w>0 && h>0){
+          clone.setAttribute('width', String(w));
+          clone.setAttribute('height', String(h));
+        }
+      } else {
+        try { const bbox = svg.getBBox(); clone.setAttribute('width', String(Math.ceil(bbox.width))); clone.setAttribute('height', String(Math.ceil(bbox.height))); clone.setAttribute('viewBox', `0 0 ${Math.ceil(bbox.width)} ${Math.ceil(bbox.height)}`); } catch {}
+      }
+      const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      bg.setAttribute('x','0'); bg.setAttribute('y','0');
+      bg.setAttribute('width', clone.getAttribute('width') || '100%');
+      bg.setAttribute('height', clone.getAttribute('height') || '100%');
+      const isLight = document.body.getAttribute('data-theme') === 'light';
+      bg.setAttribute('fill', isLight ? '#ffffff' : '#0b0f14');
+      clone.insertBefore(bg, clone.firstChild);
+      return clone;
     }
-    function loadCSS(href){ return new Promise((resolve,reject)=>{ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; l.crossOrigin='anonymous'; l.onload=()=>resolve(href); l.onerror=()=>reject(new Error('Failed to load '+href)); document.head.appendChild(l); }); }
 
+    function downloadBlob(blob, filename){
+      const a = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 250);
+    }
+
+    function exportSVG(){
+      const clone = cloneSvgWithSize();
+      const serializer = new XMLSerializer();
+      let svgText = serializer.serializeToString(clone);
+      if (!svgText.match(/^<svg[\s\S]*xmlns=/)){
+        svgText = svgText.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      downloadBlob(blob, 'mindmap.svg');
+    }
+
+    function exportPNG(){
+      const clone = cloneSvgWithSize();
+      const serializer = new XMLSerializer();
+      const svgText = serializer.serializeToString(clone);
+      const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+        const w = img.naturalWidth || img.width; const h = img.naturalHeight || img.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(w * scale));
+        canvas.height = Math.max(1, Math.floor(h * scale));
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        ctx.fillStyle = (document.body.getAttribute('data-theme') === 'light') ? '#ffffff' : '#0b0f14';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob)=>{ if (blob) downloadBlob(blob, 'mindmap.png'); URL.revokeObjectURL(url); }, 'image/png');
+      };
+      img.onerror = () => { alert('PNG export failed. Try SVG export instead.'); URL.revokeObjectURL(url); };
+      img.src = url;
+    }
+
+    // ==============================
+    // CDN loader (tries Markmap; if blocked, stays offline renderer)
+    // ==============================
+    function loadScript(src){ return new Promise((resolve,reject)=>{ const s=document.createElement('script'); s.src=src; s.async=true; s.crossOrigin='anonymous'; s.onload=()=>resolve(src); s.onerror=()=>reject(new Error('Failed to load '+src)); document.head.appendChild(s); }); }
+    function loadCSS(href){ return new Promise((resolve,reject)=>{ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; l.crossOrigin='anonymous'; l.onload=()=>resolve(href); l.onerror=()=>reject(new Error('Failed to load '+href)); document.head.appendChild(l); }); }
     async function tryUMD(){
       const a={ lib:'https://unpkg.com/markmap-lib@0.16.2/dist/browser/index.min.js', view:'https://unpkg.com/markmap-view@0.16.2/dist/index.min.js', toolbar:'https://unpkg.com/markmap-toolbar@0.16.2/dist/index.min.js', toolbarCSS:'https://unpkg.com/markmap-toolbar@0.16.2/dist/style.css'};
       const b={ lib:'https://cdn.jsdelivr.net/npm/markmap-lib@0.16.2/dist/browser/index.min.js', view:'https://cdn.jsdelivr.net/npm/markmap-view@0.16.2/dist/index.min.js', toolbar:'https://cdn.jsdelivr.net/npm/markmap-toolbar@0.16.2/dist/index.min.js', toolbarCSS:'https://cdn.jsdelivr.net/npm/markmap-toolbar@0.16.2/dist/style.css'};
@@ -103,24 +171,18 @@
       try{ await setCDN(b,'jsDelivr'); return true; }catch(e){ console.warn('jsDelivr failed',e); }
       return false;
     }
-
     async function initLibraries(){ setStatus('Loading libraries…'); const ok=await tryUMD(); return ok? 'markmap':'offline'; }
 
     // ==============================
-    // Offline engine (radial + wrap + collapse + pan/zoom)
+    // Offline renderer (radial + wrap + collapse + pan/zoom)
     // ==============================
     const offlineState = { collapsed: new Set(), scale: 1, offsetX: 0, offsetY: 0 };
     function nodeKeyFromPath(pathArr){ return pathArr.join(' / '); }
-
     function parseMarkdownBasic(md){
       const lines = md.split(/\r?\n/); const root = { text:'ROOT', children:[] };
       const stack = [{ level:0, node: root }]; const listStack = [{ indent: -1, node: root }];
       function addChild(parent, text){ const n={ text:text.trim(), children:[] }; parent.children.push(n); return n; }
-      for (let raw of lines){
-        const line = raw.replace(/\t/g,'    ');
-        const h = line.match(/^(#{1,6})\s+(.+)$/); if (h){ const level=h[1].length, text=h[2]; while(stack.length && stack[stack.length-1].level>=level) stack.pop(); const parent=stack[stack.length-1].node; const node=addChild(parent,text); stack.push({level,node}); listStack.length=1; listStack[0]={indent:-1,node}; continue; }
-        const m = line.match(/^(\s*)([-*+])\s+(.+)$/); if (m){ const indent=m[1].length, text=m[3]; while(listStack.length && listStack[listStack.length-1].indent>=indent) listStack.pop(); const parent=listStack[listStack.length-1].node; const node=addChild(parent,text); listStack.push({indent,node}); }
-      }
+      for (let raw of lines){ const line = raw.replace(/\t/g,'    '); const h = line.match(/^(#{1,6})\s+(.+)$/); if (h){ const level=h[1].length, text=h[2]; while(stack.length && stack[stack.length-1].level>=level) stack.pop(); const parent=stack[stack.length-1].node; const node=addChild(parent,text); stack.push({level,node}); listStack.length=1; listStack[0]={indent:-1,node}; continue; } const m = line.match(/^(\s*)([-*+])\s+(.+)$/); if (m){ const indent=m[1].length, text=m[3]; while(listStack.length && listStack[listStack.length-1].indent>=indent) listStack.pop(); const parent=listStack[listStack.length-1].node; const node=addChild(parent,text); listStack.push({indent,node}); } }
       if (root.children.length===0){ root.children.push({ text:'Mindmap', children:[] }); }
       return root;
     }
@@ -129,50 +191,29 @@
       const parsed = parseMarkdownBasic(md); const base = (parsed.children.length===1 ? parsed.children[0] : parsed);
       function applyCollapse(node, path){ const key=nodeKeyFromPath(path); node.__key=key; node.__collapsed=offlineState.collapsed.has(key); if(node.__collapsed) return; (node.children||[]).forEach((ch,i)=>applyCollapse(ch, path.concat(ch.text||('child'+i)))); }
       applyCollapse(base, [base.text||'ROOT']);
-
       const NODE_W=180, NODE_H=28, LAYER_R=140, LAYER_PAD=20; const visibleChildren=(n)=> n.__collapsed?[]:(n.children||[]);
       function countLeaves(n){ const kids=visibleChildren(n); if(!kids.length) return 1; return kids.map(countLeaves).reduce((a,b)=>a+b,0); }
-
       let nodes=[];
       if (layoutMode==='radial'){
         const angleStart=-Math.PI/2 - Math.PI*0.8/2, angleEnd=-Math.PI/2 + Math.PI*0.8/2;
         function layoutRadial(node, depth, a0, a1){ const kids=visibleChildren(node); const r=depth*LAYER_R+LAYER_PAD; const ang=(a0+a1)/2; nodes.push({ node, x:r*Math.cos(ang), y:r*Math.sin(ang), depth, a0, a1 }); if(!kids.length) return; let acc=a0; const total=kids.map(countLeaves).reduce((s,v)=>s+v,0); kids.forEach(ch=>{ const w=countLeaves(ch)/total*(a1-a0); const aS=acc, aE=acc+w; acc=aE; layoutRadial(ch, depth+1, aS, aE); }); }
         layoutRadial(base,0,angleStart,angleEnd);
       } else {
-        // simple left-to-right fallback
         let yCursor=0; function dfs(n,d){ const kids=visibleChildren(n); if(!kids.length){ const y=yCursor; yCursor+=42; nodes.push({node:n,x:d*220,y}); return; } const start=nodes.length; kids.forEach(ch=>dfs(ch,d+1)); const slice=nodes.slice(start); const y=(slice[0]?.y + slice[slice.length-1]?.y)/2 || (yCursor+=42); nodes.push({node:n,x:d*220,y}); } dfs(base,0);
       }
-
-      const xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y);
-      const minX = Math.min(...xs)-NODE_W-100, maxX = Math.max(...xs)+NODE_W+100;
-      const minY = Math.min(...ys)-NODE_H-100, maxY = Math.max(...ys)+NODE_H+100;
-      const width = maxX-minX, height = maxY-minY;
-      svg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`);
-      svg.innerHTML='';
-
-      const viewport = document.createElementNS('http://www.w3.org/2000/svg','g'); viewport.setAttribute('id','viewport'); svg.appendChild(viewport);
-      const gEdges = document.createElementNS('http://www.w3.org/2000/svg','g'); gEdges.setAttribute('stroke','var(--edge)'); gEdges.setAttribute('fill','none'); viewport.appendChild(gEdges);
-      const gNodes = document.createElementNS('http://www.w3.org/2000/svg','g'); viewport.appendChild(gNodes);
-
-      const index = new Map(); nodes.forEach(n=>index.set(n.node,n));
-      nodes.forEach(n=>{ const kids=visibleChildren(n.node); kids.forEach(ch=>{ const a=index.get(n.node), b=index.get(ch); const path=document.createElementNS('http://www.w3.org/2000/svg','path'); const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; path.setAttribute('d',`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`); path.setAttribute('stroke-width','2'); gEdges.appendChild(path); }); });
-
+      const xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y); const minX = Math.min(...xs)-NODE_W-100, maxX = Math.max(...xs)+NODE_W+100; const minY = Math.min(...ys)-NODE_H-100, maxY = Math.max(...ys)+NODE_H+100; const width = maxX-minX, height = maxY-minY; svg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`); svg.innerHTML='';
+      const viewport = document.createElementNS('http://www.w3.org/2000/svg','g'); viewport.setAttribute('id','viewport'); svg.appendChild(viewport); const gEdges = document.createElementNS('http://www.w3.org/2000/svg','g'); gEdges.setAttribute('stroke','var(--edge)'); gEdges.setAttribute('fill','none'); viewport.appendChild(gEdges); const gNodes = document.createElementNS('http://www.w3.org/2000/svg','g'); viewport.appendChild(gNodes);
+      const index = new Map(); nodes.forEach(n=>index.set(n.node,n)); nodes.forEach(n=>{ const kids=visibleChildren(n.node); kids.forEach(ch=>{ const a=index.get(n.node), b=index.get(ch); const path=document.createElementNS('http://www.w3.org/2000/svg','path'); const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; path.setAttribute('d',`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`); path.setAttribute('stroke-width','2'); gEdges.appendChild(path); }); });
       function drawWrapped(group, x, y, text){ const maxChars=26; const words=(text||'').split(/\s+/); const lines=[]; let cur=''; for(const w of words){ if((cur+(cur?' ':'')+w).length>maxChars){ if(cur) lines.push(cur); cur=w; } else cur=cur?cur+' '+w:w; } if(cur) lines.push(cur); if(!lines.length) lines.push(''); const lineH=13; const total=lineH*lines.length; lines.forEach((ln,i)=>{ const t=document.createElementNS('http://www.w3.org/2000/svg','text'); t.setAttribute('x',x); t.setAttribute('y',y + (i*lineH) - total/2 + 5); t.setAttribute('fill','var(--nodeText)'); t.setAttribute('font-size','12'); t.setAttribute('font-weight','600'); t.textContent=ln; group.appendChild(t); }); return Math.max(NODE_H,total+6); }
-
-      nodes.forEach(n=>{ const g=document.createElementNS('http://www.w3.org/2000/svg','g'); gNodes.appendChild(g); const hasKids=(n.node.children && n.node.children.length); const rect=document.createElementNS('http://www.w3.org/2000/svg','rect'); const w=NODE_W; const h=drawWrapped(g, n.x - w/2 + 10, n.y, (n.node.text||'').replace(/<[^>]+>/g,'')); rect.setAttribute('x',n.x - w/2); rect.setAttribute('y',n.y - h/2); rect.setAttribute('width',w); rect.setAttribute('height',h); rect.setAttribute('rx','8'); rect.setAttribute('ry','8'); rect.setAttribute('fill','var(--node)'); rect.setAttribute('stroke','var(--edge)'); g.insertBefore(rect,g.firstChild); if(hasKids){ const c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx', n.x + w/2 - 12); c.setAttribute('cy', n.y - h/2 + 12); c.setAttribute('r','6'); c.setAttribute('fill', n.node.__collapsed? '#ef4444' : '#22c55e'); c.setAttribute('stroke','var(--edge)'); g.appendChild(c); }
-        g.addEventListener('click', (ev)=>{ if(!hasKids) return; const key=n.node.__key; if(offlineState.collapsed.has(key)) offlineState.collapsed.delete(key); else offlineState.collapsed.add(key); render(); ev.stopPropagation(); }); });
-
+      nodes.forEach(n=>{ const g=document.createElementNS('http://www.w3.org/2000/svg','g'); gNodes.appendChild(g); const hasKids=(n.node.children && n.node.children.length); const rect=document.createElementNS('http://www.w3.org/2000/svg','rect'); const w=180; const h=drawWrapped(g, n.x - w/2 + 10, n.y, (n.node.text||'').replace(/<[^>]+>/g,'')); rect.setAttribute('x',n.x - w/2); rect.setAttribute('y',n.y - h/2); rect.setAttribute('width',w); rect.setAttribute('height',h); rect.setAttribute('rx','8'); rect.setAttribute('ry','8'); rect.setAttribute('fill','var(--node)'); rect.setAttribute('stroke','var(--edge)'); g.insertBefore(rect,g.firstChild); if(hasKids){ const c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx', n.x + w/2 - 12); c.setAttribute('cy', n.y - h/2 + 12); c.setAttribute('r','6'); c.setAttribute('fill', n.node.__collapsed? '#ef4444' : '#22c55e'); c.setAttribute('stroke','var(--edge)'); g.appendChild(c); } g.addEventListener('click', (ev)=>{ if(!hasKids) return; const key=n.node.__key; if(offlineState.collapsed.has(key)) offlineState.collapsed.delete(key); else offlineState.collapsed.add(key); render(); ev.stopPropagation(); }); });
       function applyTransform(){ const v=$('#viewport'); v && v.setAttribute('transform',`translate(${offlineState.offsetX},${offlineState.offsetY}) scale(${offlineState.scale})`); }
-      applyTransform();
-      svg.onwheel=(e)=>{ e.preventDefault(); const factor=e.deltaY<0?1.1:0.9; const {left,top}=svg.getBoundingClientRect(); const mx=e.clientX-left-offlineState.offsetX; const my=e.clientY-top-offlineState.offsetY; offlineState.offsetX -= mx*(factor-1); offlineState.offsetY -= my*(factor-1); offlineState.scale*=factor; applyTransform(); };
-      let pan=false,sx=0,sy=0,ox=0,oy=0; svg.addEventListener('pointerdown',(e)=>{ pan=true; sx=e.clientX; sy=e.clientY; ox=offlineState.offsetX; oy=offlineState.offsetY; svg.setPointerCapture(e.pointerId); }); svg.addEventListener('pointermove',(e)=>{ if(!pan) return; offlineState.offsetX = ox + (e.clientX - sx); offlineState.offsetY = oy + (e.clientY - sy); applyTransform(); }); svg.addEventListener('pointerup',()=>{ pan=false; });
+      applyTransform(); svg.onwheel=(e)=>{ e.preventDefault(); const factor=e.deltaY<0?1.1:0.9; const {left,top}=svg.getBoundingClientRect(); const mx=e.clientX-left-offlineState.offsetX; const my=e.clientY-top-offlineState.offsetY; offlineState.offsetX -= mx*(factor-1); offlineState.offsetY -= my*(factor-1); offlineState.scale*=factor; applyTransform(); }; let pan=false,sx=0,sy=0,ox=0,oy=0; svg.addEventListener('pointerdown',(e)=>{ pan=true; sx=e.clientX; sy=e.clientY; ox=offlineState.offsetX; oy=offlineState.offsetY; svg.setPointerCapture(e.pointerId); }); svg.addEventListener('pointermove',(e)=>{ if(!pan) return; offlineState.offsetX = ox + (e.clientX - sx); offlineState.offsetY = oy + (e.clientY - sy); applyTransform(); }); svg.addEventListener('pointerup',()=>{ pan=false; });
     }
 
     // ==============================
     // App logic (Markmap when available, else offline)
     // ==============================
     let mm, transform, Toolbar;
-
     function render(){
       const mdEl=$('#md'); const svg=$('#mindmap'); const modeSel=$('#layout');
       const md = mdEl.value || '# Mindmap\n\nStart typing in the left panel.';
@@ -195,6 +236,7 @@
         try{ const t = parseMarkdownBasic('# A\n\n- B\n  - C'); tests.push({ name:'offline parse children', pass:(t.children?.length||0)>0 }); }catch(e){ tests.push({ name:'offline parse children', pass:false, error:e.message }); }
         try{ const t = parseMarkdownBasic('No headings\n- one\n- two'); tests.push({ name:'offline default root', pass:(t.children?.length||0)>=1 }); }catch(e){ tests.push({ name:'offline default root', pass:false, error:e.message }); }
         try{ const enc = encodeHash('# H1'); tests.push({ name:'hash prefix', pass: enc.startsWith('#mm=') }); }catch(e){ tests.push({ name:'hash prefix', pass:false, error:e.message }); }
+        try{ const s = new XMLSerializer().serializeToString(cloneSvgWithSize()); tests.push({ name:'export svg has xmlns', pass: /xmlns=\"http:\/\/www.w3.org\/2000\/svg\"/.test(s) }); }catch(e){ tests.push({ name:'export svg has xmlns', pass:false, error:e.message }); }
       }
       console.table(tests);
       const allPass = tests.every(t=>t.pass); setStatus(allPass? 'Ready ✓' : 'Diagnostics warning', allPass? 'ok':'warn');
@@ -207,17 +249,15 @@
       $('#btn-new').addEventListener('click', ()=>{ mdEl.value=''; render(); });
       $('#btn-sample').addEventListener('click', ()=>{ mdEl.value=SAMPLE; render(); });
       $('#btn-copy').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(location.href); alert('Shareable link copied.'); }catch{ alert('Failed to copy link.'); } });
-      $('#btn-svg').addEventListener('click', ()=>{ const serializer=new XMLSerializer(); const svgText=serializer.serializeToString(svg); const blob=new Blob([svgText],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='mindmap.svg'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); });
-      $('#btn-png').addEventListener('click', ()=>{ const serializer=new XMLSerializer(); const svgText=serializer.serializeToString(svg); const img=new Image(); const svgBlob=new Blob([svgText],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(svgBlob); img.onload=()=>{ const scale=2; const canvas=document.createElement('canvas'); canvas.width=img.width*scale; canvas.height=img.height*scale; const ctx=canvas.getContext('2d'); ctx.setTransform(scale,0,0,scale,0,0); ctx.drawImage(img,0,0); canvas.toBlob((blob)=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mindmap.png'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); },'image/png'); URL.revokeObjectURL(url); }; img.onerror=()=>{ alert('PNG export failed. Try SVG export instead.'); URL.revokeObjectURL(url); }; img.src=url; });
+      $('#btn-svg').addEventListener('click', exportSVG);
+      $('#btn-png').addEventListener('click', exportPNG);
       function applyLayout(){ render(); }
       function applyTheme(){ document.body.setAttribute('data-theme', themeEl.value); render(); }
       themeEl.addEventListener('change', applyTheme); layoutEl.addEventListener('change', applyLayout); mdEl.addEventListener('input', debounce(render, 200));
-
       if (mode==='markmap'){
         const { Markmap } = window.markmap; ({ transform } = window.markmap); ({ Toolbar } = window.markmapToolbar);
         mm = Markmap.create(svg, { initialExpandLevel: 3 }); const toolbar = new Toolbar(); toolbar.attach(mm); $('#toolbar').append(toolbar.render()); setMode('markmap');
       } else { setMode('offline'); setSourceHint('offline renderer (radial)'); }
-
       const initial = decodeHash(); $('#md').value = initial || `# Mindmap\n\nType on the left. Headings become main nodes, lists become branches.`;
       applyTheme(); render(); runSelfTests(); window.addEventListener('resize', debounce(()=>{ if (mm) mm.fit(); else render(); }, 100));
     }
